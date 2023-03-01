@@ -19,9 +19,11 @@
                         <li :class="{ 'active': chooseType === 'eraser' }" @click="chooseTypeFn('eraser')">橡皮</li>
                     </div>
                     <div v-else>
-                        <li style="background-color: #6a677c;" @click="replayAll" >全部重现</li>
-                        <li style="background-color: #6a677c;" @click="replayPrev" v-if="importActionJsons.indexOf(currentAction) > 0">上一步</li>
-                        <li style="background-color: #6a677c;" @click="replayNext" v-if="importActionJsons.indexOf(currentAction) < importActionJsons.length - 1">下一步</li>
+                        <li style="background-color: #6a677c;" @click="replayAll">全部重现</li>
+                        <li style="background-color: #6a677c;" @click="replayPrev"
+                            v-if="importActionJsons.indexOf(currentAction) > 0">上一步</li>
+                        <li style="background-color: #6a677c;" @click="replayNext"
+                            v-if="importActionJsons.indexOf(currentAction) < importActionJsons.length - 1">下一步</li>
                         <li style="background-color: #6a677c;" @click="exitReplay">退出</li>
                     </div>
                 </ul>
@@ -69,6 +71,8 @@ export default {
             canvasHeight: 600,
             penSkipPointMaxNum: 3, // 铅笔时跳过的绘图点, 节省资源
             penSkipPointNum: 0,
+            eraserSkipPointMaxNum: 1, // 橡皮时跳过的绘图点, 节省资源
+            eraserSkipPointNum: 0,
             importActionJsons: [],
             actionDatas: [],
             actionDataTmp: {
@@ -89,16 +93,16 @@ export default {
     },
     created() { },
     methods: {
-        replayAll(){
+        replayAll() {
             this.plotFn('clear')
             this.currentAction = null
-            while(this.importActionJsons.indexOf(this.currentAction) < this.importActionJsons.length -1){
+            while (this.importActionJsons.indexOf(this.currentAction) < this.importActionJsons.length - 1) {
                 this.replayNext(false)
                 console.log("this.replayNext")
             }
         },
         replay(isStep = true) {
-            if(isStep){
+            if (isStep) {
                 this.plotFn('clear')
             }
             this.chooseType = this.currentAction.data.chooseType
@@ -107,21 +111,25 @@ export default {
 
             this.plotCoord.x2 = this.currentAction.data.endX
             this.plotCoord.y2 = this.currentAction.data.endY
+            const draw = new Draw(this.plotContext, { type: this.currentAction.data.borderType, color: this.currentAction.data.color, width: this.currentAction.data.lineWidth })
             if (this.chooseType === 'pen') {
                 this.plotContext.beginPath()
                 this.plotContext.moveTo(this.plotCoord.x, this.plotCoord.y)
-            }
-            // 实例化构造函数
-            const draw = new Draw(this.plotContext, { type: this.currentAction.data.borderType, color: this.currentAction.data.color, width: this.currentAction.data.lineWidth })
-            if (this.currentAction.data.chooseType === 'poly') {
-                draw[this.currentAction.data.chooseType](this.plotCoord.x, this.plotCoord.y, this.plotCoord.x2, this.plotCoord.y2, this.currentAction.data.sides)
+                this.currentAction.data.middlePos.forEach(item => draw[this.currentAction.data.chooseType](null, null, item.x, item.y))
+            } else if (this.chooseType === 'eraser') {
+                this.plotContext.clearRect(_this.plotCoord.x - 5, _this.plotCoord.y - 5, 10, 10)
+                this.currentAction.data.middlePos.forEach(item => draw[this.currentAction.data.chooseType](null, null, item.x, item.y))
             } else {
-                draw[this.currentAction.data.chooseType](this.plotCoord.x, this.plotCoord.y, this.plotCoord.x2, this.plotCoord.y2)
+                if (this.currentAction.data.chooseType === 'poly') {
+                    draw[this.currentAction.data.chooseType](this.plotCoord.x, this.plotCoord.y, this.plotCoord.x2, this.plotCoord.y2, this.currentAction.data.sides)
+                } else {
+                    draw[this.currentAction.data.chooseType](this.plotCoord.x, this.plotCoord.y, this.plotCoord.x2, this.plotCoord.y2)
+                }
             }
-            if(!isStep){
+            if (!isStep) {
                 this.plotData.push(this.plotContext.getImageData(0, 0, this.canvasWidth, this.canvasHeight))
             }
-            console.log(this.currentAction.data)
+            // console.log(this.currentAction.data)
         },
         replayPrev(isStep = true) {
             if (this.currentAction != null) {
@@ -171,14 +179,18 @@ export default {
             this.currentAction = item
             this.actionDatas.push({ time: getTime(), data: this.currentAction })
             this.penSkipPointNum = 0
+            this.eraserSkipPointNum = 0
             console.log("onNewAction!", this.currentAction)
         },
         onActionChange() {
             this.currentAction.endX = this.plotCoord.x2
             this.currentAction.endY = this.plotCoord.y2
-            if (this.chooseType === 'pen' && this.penSkipPointNum++ > this.penSkipPointMaxNum) {
+            if (this.chooseType === 'pen' && this.penSkipPointNum++ > this.penSkipPointMaxNum ||
+                this.chooseType === 'eraser' && this.eraserSkipPointNum++ > this.eraserSkipPointMaxNum
+            ) {
                 this.currentAction.middlePos.push({ x: this.plotCoord.x2, y: this.plotCoord.y2 })
                 this.penSkipPointNum = 0
+                this.eraserSkipPointNum = 0
             }
         },
         onActionEnd() {
